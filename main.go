@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"log"
 	"net/http"
 )
 
@@ -66,12 +67,9 @@ func viewPostHandler(writer http.ResponseWriter, request *http.Request) {
 		return
 	}
 
-	// else carry on as normal.
 	post, err := Load(urlTitle)
 
 	if err != nil {
-		fmt.Println("post not found, redirecting.")
-		// Rather than display an error, redirect them to the edit page.
 		http.Redirect(writer, request, RoutePrefixEdit+urlTitle, http.StatusFound)
 		return
 	}
@@ -114,16 +112,13 @@ func savePostHandler(writer http.ResponseWriter, request *http.Request) {
 	err := post.Save()
 
 	if err != nil {
-		fmt.Println("redirecting")
-		http.Redirect(writer, request, "/view/hello/", http.StatusInternalServerError)
+		http.Redirect(writer, request, RoutePrefixOops, http.StatusFound)
 	}
 
-	fmt.Println("Saved! Redirecting to the view page.")
-	http.Redirect(writer, request, RoutePrefixView+urlTitle, http.StatusOK)
+	http.Redirect(writer, request, RoutePrefixView+urlTitle, http.StatusFound)
 }
 
 func errorHandler(writer http.ResponseWriter, request *http.Request) {
-	fmt.Println("In the error handler")
 	renderTemplate(writer, "500.html", nil)
 }
 
@@ -132,5 +127,6 @@ func main() {
 	http.HandleFunc(RoutePrefixEdit, editPostHandler)
 	http.HandleFunc(RoutePrefixSave, savePostHandler)
 	http.HandleFunc(RoutePrefixOops, errorHandler)
-	http.ListenAndServe(":8080", nil)
+
+	log.Fatal(http.ListenAndServe(":9090", nil))
 }
