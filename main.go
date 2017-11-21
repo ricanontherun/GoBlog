@@ -28,7 +28,9 @@ var (
 )
 
 // Global which represents the pre-parsed html templates.
-var templates *template.Template
+
+// template.Must is a covenience which says "If I receive a non-nil err, I panic(). Else I return the first argument, a template pointer."
+var templates = template.Must(template.ParseGlob(DirectoryViews + "/*.html"))
 
 type Post struct {
 	Title string
@@ -44,8 +46,7 @@ func getViewPath(view string) string {
 }
 
 func renderTemplate(writer http.ResponseWriter, view string, data interface{}) error {
-	// Templates are the pre parsed views.
-	return templates.ExecuteTemplate(writer, getViewPath(view), data)
+	return templates.ExecuteTemplate(writer, view, data)
 }
 
 func (page *Post) Save() error {
@@ -146,23 +147,7 @@ func setupRoutes() {
 }
 
 func main() {
-	files, err := ioutil.ReadDir(DirectoryViews)
-
-	if err != nil {
-		panic(err)
-	}
-
-	for _, file := range files {
-		fmt.Println(file.Name())
-	}
-
-	return
-	// TODO: Check for posts directory here, create if doesn't exist.
-
 	setupRoutes()
-
-	// Parse our views, panicing if an error occurs.
-	templates = template.Must(template.ParseFiles("500.html", "edit.html", "view.html"))
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
