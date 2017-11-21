@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 )
 
 const (
@@ -30,23 +31,13 @@ var (
 // Global which represents the pre-parsed html templates.
 
 // template.Must is a covenience which says "If I receive a non-nil err, I panic(). Else I return the first argument, a template pointer."
+// This will not work when views with identical names are nested in different directories.
 var templates = template.Must(template.ParseGlob(DirectoryViews + "/*.html"))
+var matchedRoutes = make(map[string]*regexp.Regexp)
 
 type Post struct {
 	Title string
 	Body  []byte // Makes ioutil operations easier.
-}
-
-func getPostPathFromTitle(title string) string {
-	return DirectoryPosts + "/" + title + ".txt"
-}
-
-func getViewPath(view string) string {
-	return DirectoryViews + "/" + view
-}
-
-func renderTemplate(writer http.ResponseWriter, view string, data interface{}) error {
-	return templates.ExecuteTemplate(writer, view, data)
 }
 
 func (page *Post) Save() error {
@@ -73,6 +64,18 @@ func Load(title string) (*Post, error) {
 	}
 
 	return &Post{Title: title, Body: body}, nil
+}
+
+func getPostPathFromTitle(title string) string {
+	return DirectoryPosts + "/" + title + ".txt"
+}
+
+func getViewPath(view string) string {
+	return DirectoryViews + "/" + view
+}
+
+func renderTemplate(writer http.ResponseWriter, view string, data interface{}) error {
+	return templates.ExecuteTemplate(writer, view, data)
 }
 
 func viewPostHandler(writer http.ResponseWriter, request *http.Request) {
@@ -139,11 +142,29 @@ func errorHandler(writer http.ResponseWriter, request *http.Request) {
 	renderTemplate(writer, "500.html", nil)
 }
 
+func registerRoute(route string, pattern string, handler http.HandlerFunc) {
+	regex, exists := matchedRoutes[pattern]
+
+	if !exists {
+		regex = regexp.MustCompile(pattern)
+		matchedRoutes[pattern] = regex
+	}
+
+	http.HandleFunc(route, func(writer http.ResponseWriter, request *http.Request) {
+		if m := regex.FindStringSubmatch(request.URL.Path); m != nil {
+			http.NotFound(writer, request)
+			return
+		}
+
+		handler(writer, request)
+	})
+}
+
 func setupRoutes() {
-	http.HandleFunc(RoutePrefixView, viewPostHandler)
-	http.HandleFunc(RoutePrefixEdit, editPostHandler)
-	http.HandleFunc(RoutePrefixSave, savePostHandler)
-	http.HandleFunc(RoutePrefixOops, errorHandler)
+	registerRoute(RoutePrefixView, "a", viewPostHandler)
+	registerRoute(RoutePrefixEdit, "b", editPostHandler)
+	registerRoute(RoutePrefixSave, "b", savePostHandler)
+	registerRoute(RoutePrefixOops, "a", errorHandler)
 }
 
 func main() {
