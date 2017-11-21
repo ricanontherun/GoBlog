@@ -1,11 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 )
 
 const (
@@ -19,6 +21,14 @@ const (
 	RoutePrefixSave = "/save/"
 	RoutePrefixOops = "/oops/"
 )
+
+var (
+	ErrorPermissionDenied = errors.New("Permission denied")
+	ErrorResourceMissing  = errors.New("Resource missing")
+)
+
+// Global which represents the pre-parsed html templates.
+var templates *template.Template
 
 type Post struct {
 	Title string
@@ -34,19 +44,24 @@ func getViewPath(view string) string {
 }
 
 func renderTemplate(writer http.ResponseWriter, view string, data interface{}) error {
-	template, err := template.ParseFiles(getViewPath(view))
-
-	if err != nil {
-		return err
-	}
-
-	template.Execute(writer, data)
-
-	return nil
+	// Templates are the pre parsed views.
+	return templates.ExecuteTemplate(writer, getViewPath(view), data)
 }
 
 func (page *Post) Save() error {
-	return ioutil.WriteFile(getPostPathFromTitle(page.Title), page.Body, 0600)
+	if _, err := os.Stat(DirectoryPosts); os.IsNotExist(err) {
+		log.Println(err)
+		return ErrorResourceMissing
+	}
+
+	err := ioutil.WriteFile(getPostPathFromTitle(page.Title), page.Body, 777)
+
+	if err != nil {
+		log.Println(err)
+		return ErrorPermissionDenied
+	}
+
+	return nil
 }
 
 func Load(title string) (*Post, error) {
@@ -112,7 +127,8 @@ func savePostHandler(writer http.ResponseWriter, request *http.Request) {
 	err := post.Save()
 
 	if err != nil {
-		http.Redirect(writer, request, RoutePrefixOops, http.StatusFound)
+		http.Error(writer, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	http.Redirect(writer, request, RoutePrefixView+urlTitle, http.StatusFound)
@@ -122,11 +138,31 @@ func errorHandler(writer http.ResponseWriter, request *http.Request) {
 	renderTemplate(writer, "500.html", nil)
 }
 
-func main() {
+func setupRoutes() {
 	http.HandleFunc(RoutePrefixView, viewPostHandler)
 	http.HandleFunc(RoutePrefixEdit, editPostHandler)
 	http.HandleFunc(RoutePrefixSave, savePostHandler)
 	http.HandleFunc(RoutePrefixOops, errorHandler)
+}
 
-	log.Fatal(http.ListenAndServe(":9090", nil))
+func main() {
+	files, err := ioutil.ReadDir(DirectoryViews)
+
+	if err != nil {
+		panic(err)
+	}
+
+	for _, file := range files {
+		fmt.Println(file.Name())
+	}
+
+	return
+	// TODO: Check for posts directory here, create if doesn't exist.
+
+	setupRoutes()
+
+	// Parse our views, panicing if an error occurs.
+	templates = template.Must(template.ParseFiles("500.html", "edit.html", "view.html"))
+
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
